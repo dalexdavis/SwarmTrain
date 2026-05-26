@@ -36,7 +36,7 @@ import time
 import websockets
 
 # ── Server address ─────────────────────────────────────────────────────────────
-SERVER_URI = "ws://localhost:8765"
+SERVER_URI = "ws://127.0.0.1:8765"
 
 # ── Small mock vocabulary for Node 2 ─────────────────────────────────────────
 VOCAB = [
