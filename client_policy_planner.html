@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SwarmTrain Client Policy Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  >
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --border: #d9e2f1;
+      --text: #1f2937;
+      --muted: #637083;
+      --blue: #1a73e8;
+      --blue-soft: #e8f0fe;
+      --green: #1e8e3e;
+      --green-soft: #e6f4ea;
+      --amber: #b06b00;
+      --amber-soft: #fef7e0;
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Public Sans", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(26, 115, 232, 0.08), transparent 24%),
+        linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
+    }
+
+    .page {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    .hero {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 24px 26px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 2rem;
+      letter-spacing: -0.03em;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 760px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .hero-badge {
+      flex-shrink: 0;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: var(--green);
+      font-size: 0.8rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 380px minmax(0, 1fr);
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .panel-body {
+      padding: 20px;
+    }
+
+    .eyebrow {
+      margin-bottom: 8px;
+      color: var(--blue);
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .section-title {
+      margin: 0 0 10px;
+      font-size: 1.06rem;
+    }
+
+    .section-copy {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.7;
+    }
+
+    .control {
+      margin-bottom: 18px;
+    }
+
+    .control-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .control-label {
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    .control-value {
+      min-width: 52px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: var(--blue-soft);
+      color: var(--blue);
+      text-align: center;
+      font-size: 0.78rem;
+      font-weight: 700;
+      font-family: "Roboto Mono", monospace;
+    }
+
+    .control-copy {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.55;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--blue);
+    }
+
+    .toggle-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 16px 0 0;
+    }
+
+    .toggle-card {
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: #f8fbff;
+    }
+
+    .toggle-card strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 0.84rem;
+    }
+
+    .toggle-card span {
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.5;
+    }
+
+    .summary-card {
+      margin-top: 18px;
+      padding: 16px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+      border: 1px solid #d7e5ff;
+    }
+
+    .summary-card h3 {
+      margin: 0 0 8px;
+      color: var(--blue);
+      font-size: 0.95rem;
+    }
+
+    .summary-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 0.85rem;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .metric {
+      padding: 12px;
+      border-radius: 14px;
+      background: #ffffff;
+      border: 1px solid #dce6f7;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 0.74rem;
+      margin-bottom: 4px;
+    }
+
+    .metric-value {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .map-wrap {
+      padding: 20px;
+    }
+
+    .map-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .map-header p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      line-height: 1.65;
+      max-width: 780px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-content: flex-start;
+      justify-content: flex-end;
+    }
+
+    .legend-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: #3c4043;
+    }
+
+    .legend-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+    }
+
+    .swatch-clean {
+      background: #21a366;
+    }
+
+    .swatch-mixed {
+      background: #f9ab00;
+    }
+
+    .swatch-node {
+      background: #1a73e8;
+    }
+
+    #map {
+      height: 560px;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .node-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .node-card {
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: #fbfdff;
+    }
+
+    .node-card h4 {
+      margin: 0 0 6px;
+      font-size: 0.9rem;
+    }
+
+    .node-meta {
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.55;
+    }
+
+    .node-score {
+      margin-top: 10px;
+      display: inline-flex;
+      align-items: center;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-family: "Roboto Mono", monospace;
+      font-size: 0.76rem;
+      font-weight: 700;
+    }
+
+    .leaflet-popup-content {
+      font-family: "Public Sans", sans-serif;
+      line-height: 1.55;
+    }
+
+    .popup-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    @media (max-width: 1100px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .node-list,
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+
+      .map-header {
+        flex-direction: column;
+      }
+
+      .legend {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div>
+        <h1>SwarmTrain Client Policy Planner</h1>
+        <p>
+          This standalone planner helps a client simulate how workload routing changes when they
+          prioritize raw compute, energy efficiency, or carbon footprint. The world map uses
+          OpenStreetMap tiles through Leaflet, and the compute nodes shown here are demo locations.
+        </p>
+      </div>
+      <div class="hero-badge">Open-source map stack</div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <div class="panel-body">
+          <div class="eyebrow">Client controls</div>
+          <h2 class="section-title">Policy toggles and trade-offs</h2>
+          <p class="section-copy">
+            A client that only wants speed can set energy efficiency and carbon footprint to zero.
+            A client that cares about sustainability can increase those weights and route work toward
+            cleaner, more efficient regions.
+          </p>
+
+          <div class="control">
+            <div class="control-head">
+              <div class="control-label">Compute priority</div>
+              <div class="control-value" id="computeValue">80</div>
+            </div>
+            <p class="control-copy">Bias toward faster runtimes, larger accelerators, and lower job latency.</p>
+            <input id="computeSlider" type="range" min="0" max="100" value="80">
+          </div>
+
+          <div class="control">
+            <div class="control-head">
+              <div class="control-label">Energy efficiency priority</div>
+              <div class="control-value" id="efficiencyValue">55</div>
+            </div>
+            <p class="control-copy">Bias toward nodes with stronger performance-per-watt characteristics.</p>
+            <input id="efficiencySlider" type="range" min="0" max="100" value="55">
+          </div>
+
+          <div class="control">
+            <div class="control-head">
+              <div class="control-label">Carbon footprint priority</div>
+              <div class="control-value" id="carbonValue">45</div>
+            </div>
+            <p class="control-copy">Bias toward regions with cleaner grids and better renewable availability.</p>
+            <input id="carbonSlider" type="range" min="0" max="100" value="45">
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-card">
+              <strong>Set sustainability to zero</strong>
+              <span>Turns the policy into a performance-first scheduler for clients that only want speed.</span>
+            </div>
+            <div class="toggle-card">
+              <strong>Raise carbon and efficiency</strong>
+              <span>Pushes jobs toward cleaner regions and more efficient nodes even if they are not the fastest.</span>
+            </div>
+          </div>
+
+          <div class="summary-card">
+            <h3 id="summaryTitle">Performance-first routing</h3>
+            <p id="summaryText">
+              Jobs prefer the fastest node pool first. Sustainability filters are treated as low-impact guidance.
+            </p>
+
+            <div class="metrics">
+              <div class="metric">
+                <div class="metric-label">Primary outcome</div>
+                <div class="metric-value" id="primaryOutcome">Fastest completion</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Estimated grid posture</div>
+                <div class="metric-value" id="gridPosture">Mixed</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Demo chosen node</div>
+                <div class="metric-value" id="chosenNode">Frankfurt GPU</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="map-wrap">
+          <div class="map-header">
+            <div>
+              <div class="eyebrow">Global placement view</div>
+              <h2 class="section-title">World map with demo compute nodes</h2>
+              <p>
+                Green circles represent cleaner energy zones. Amber circles represent mixed-grid regions.
+                Blue markers show compute nodes the scheduler can use for this demo. Rankings update live as
+                the client policy changes.
+              </p>
+            </div>
+            <div class="legend">
+              <div class="legend-pill"><span class="legend-swatch swatch-clean"></span> Cleaner energy zone</div>
+              <div class="legend-pill"><span class="legend-swatch swatch-mixed"></span> Mixed grid zone</div>
+              <div class="legend-pill"><span class="legend-swatch swatch-node"></span> Compute node</div>
+            </div>
+          </div>
+
+          <div id="map"></div>
+
+          <div class="node-list" id="nodeList"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script>
+    const sliders = {
+      compute: document.getElementById("computeSlider"),
+      efficiency: document.getElementById("efficiencySlider"),
+      carbon: document.getElementById("carbonSlider"),
+    };
+
+    const outputs = {
+      compute: document.getElementById("computeValue"),
+      efficiency: document.getElementById("efficiencyValue"),
+      carbon: document.getElementById("carbonValue"),
+      summaryTitle: document.getElementById("summaryTitle"),
+      summaryText: document.getElementById("summaryText"),
+      primaryOutcome: document.getElementById("primaryOutcome"),
+      gridPosture: document.getElementById("gridPosture"),
+      chosenNode: document.getElementById("chosenNode"),
+      nodeList: document.getElementById("nodeList"),
+    };
+
+    const nodes = [
+      {
+        id: "node-1",
+        name: "London edge",
+        coords: [51.5072, -0.1276],
+        role: "Attention layer",
+        performance: 72,
+        efficiency: 61,
+        carbon: 58,
+        region: "Mixed-low carbon EU",
+      },
+      {
+        id: "node-2",
+        name: "Frankfurt GPU",
+        coords: [50.1109, 8.6821],
+        role: "LM head",
+        performance: 92,
+        efficiency: 68,
+        carbon: 46,
+        region: "Mixed grid central EU",
+      },
+      {
+        id: "node-3",
+        name: "Reykjavik hydro",
+        coords: [64.1466, -21.9426],
+        role: "Reserve sustainable pool",
+        performance: 66,
+        efficiency: 88,
+        carbon: 97,
+        region: "Very clean hydro grid",
+      },
+      {
+        id: "node-4",
+        name: "Virginia cloud",
+        coords: [39.0438, -77.4874],
+        role: "Burst compute pool",
+        performance: 84,
+        efficiency: 60,
+        carbon: 39,
+        region: "Mixed grid east US",
+      },
+      {
+        id: "node-5",
+        name: "Singapore inference",
+        coords: [1.3521, 103.8198],
+        role: "Latency optimized APAC",
+        performance: 78,
+        efficiency: 65,
+        carbon: 34,
+        region: "Dense urban mixed grid",
+      }
+    ];
+
+    const map = L.map("map", {
+      zoomControl: true,
+      scrollWheelZoom: true,
+    }).setView([28, 10], 2);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+
+    const energyZones = [
+      {
+        label: "Nordic hydro-heavy zone",
+        coords: [63.5, 16],
+        radius: 700000,
+        color: "#21a366",
+        fillOpacity: 0.18,
+        note: "High renewable share and low-carbon grid profile.",
+      },
+      {
+        label: "Western Europe cleaner grid corridor",
+        coords: [50.5, 2],
+        radius: 780000,
+        color: "#34a853",
+        fillOpacity: 0.14,
+        note: "Moderately strong renewable availability and better average carbon intensity.",
+      },
+      {
+        label: "Central mixed-grid corridor",
+        coords: [49, 12],
+        radius: 650000,
+        color: "#f9ab00",
+        fillOpacity: 0.16,
+        note: "Balanced infrastructure but less favorable carbon profile.",
+      },
+      {
+        label: "East US mixed grid region",
+        coords: [38.5, -78],
+        radius: 850000,
+        color: "#fbbc04",
+        fillOpacity: 0.14,
+        note: "Good compute availability with mixed grid carbon characteristics.",
+      }
+    ];
+
+    energyZones.forEach((zone) => {
+      L.circle(zone.coords, {
+        color: zone.color,
+        fillColor: zone.color,
+        fillOpacity: zone.fillOpacity,
+        radius: zone.radius,
+        weight: 2,
+      })
+      .bindPopup(`<div class="popup-title">${zone.label}</div><div>${zone.note}</div>`)
+      .addTo(map);
+    });
+
+    const nodeMarkers = nodes.map((node) => {
+      const marker = L.circleMarker(node.coords, {
+        radius: 8,
+        color: "#ffffff",
+        weight: 2,
+        fillColor: "#1a73e8",
+        fillOpacity: 1,
+      }).addTo(map);
+
+      marker.bindPopup(renderPopup(node, 0));
+      return { node, marker };
+    });
+
+    function renderPopup(node, score) {
+      return `
+        <div class="popup-title">${node.name}</div>
+        <div>${node.role}</div>
+        <div>Region: ${node.region}</div>
+        <div>Performance: ${node.performance} / Efficiency: ${node.efficiency} / Carbon: ${node.carbon}</div>
+        <div><strong>Policy score: ${score.toFixed(1)}</strong></div>
+      `;
+    }
+
+    function getSummary(compute, efficiency, carbon) {
+      if (compute >= efficiency && compute >= carbon) {
+        return {
+          title: "Performance-first routing",
+          text: "Jobs prefer the fastest node pool first. Sustainability filters are treated as low-impact guidance.",
+          outcome: "Fastest completion",
+          grid: carbon === 0 && efficiency === 0 ? "Not evaluated" : "Mixed",
+        };
+      }
+
+      if (carbon >= compute && carbon >= efficiency) {
+        return {
+          title: "Carbon-aware routing",
+          text: "Jobs are steered toward cleaner-energy regions, even if another node might complete slightly faster.",
+          outcome: "Lower carbon impact",
+          grid: "Cleaner-first",
+        };
+      }
+
+      return {
+        title: "Efficiency-balanced routing",
+        text: "Jobs aim for good throughput while rewarding stronger performance-per-watt and better grid conditions.",
+        outcome: "Balanced efficiency",
+        grid: "Selective clean mix",
+      };
+    }
+
+    function scoreNode(node, compute, efficiency, carbon) {
+      return (
+        node.performance * (compute / 100) +
+        node.efficiency * (efficiency / 100) +
+        node.carbon * (carbon / 100)
+      );
+    }
+
+    function renderNodes(sortedNodes) {
+      outputs.nodeList.innerHTML = sortedNodes.map(({ node, score }, index) => `
+        <div class="node-card">
+          <h4>${index + 1}. ${node.name}</h4>
+          <div class="node-meta">
+            ${node.role}<br>
+            ${node.region}<br>
+            Performance ${node.performance} · Efficiency ${node.efficiency} · Carbon ${node.carbon}
+          </div>
+          <div class="node-score">Score ${score.toFixed(1)}</div>
+        </div>
+      `).join("");
+    }
+
+    function updatePlanner() {
+      const compute = Number(sliders.compute.value);
+      const efficiency = Number(sliders.efficiency.value);
+      const carbon = Number(sliders.carbon.value);
+
+      outputs.compute.textContent = compute;
+      outputs.efficiency.textContent = efficiency;
+      outputs.carbon.textContent = carbon;
+
+      const summary = getSummary(compute, efficiency, carbon);
+      outputs.summaryTitle.textContent = summary.title;
+      outputs.summaryText.textContent = summary.text;
+      outputs.primaryOutcome.textContent = summary.outcome;
+      outputs.gridPosture.textContent = summary.grid;
+
+      const ranked = nodes
+        .map((node) => ({ node, score: scoreNode(node, compute, efficiency, carbon) }))
+        .sort((a, b) => b.score - a.score);
+
+      outputs.chosenNode.textContent = ranked[0].node.name;
+      renderNodes(ranked);
+
+      nodeMarkers.forEach(({ node, marker }) => {
+        const scoredNode = ranked.find((item) => item.node.id === node.id);
+        const isWinner = scoredNode.node.id === ranked[0].node.id;
+        marker.setStyle({
+          fillColor: isWinner ? "#0b8043" : "#1a73e8",
+          radius: isWinner ? 10 : 8,
+        });
+        marker.bindPopup(renderPopup(node, scoredNode.score));
+      });
+    }
+
+    Object.values(sliders).forEach((slider) => slider.addEventListener("input", updatePlanner));
+    updatePlanner();
+  </script>
+</body>
+</html>

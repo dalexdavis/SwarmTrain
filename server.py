@@ -9,6 +9,7 @@ Run with:
 """
 
 import asyncio
+import base64
 import json
 import os
 import queue
@@ -37,6 +38,7 @@ TINYSTORIES = [
 APP_DIR = Path(__file__).resolve().parent
 STORIES_PATH = APP_DIR / "tinystories.txt"
 CSS_PATH = APP_DIR / "styles.css"
+POLICY_PLANNER_PATH = APP_DIR / "client_policy_planner.html"
 
 if not STORIES_PATH.exists():
     STORIES_PATH.write_text("\n".join(TINYSTORIES), encoding="utf-8")
@@ -193,6 +195,29 @@ def render_log_lines(lines: list[str]) -> str:
     return "\n".join(html_lines) if html_lines else '<span class="badge-off">No output yet - run the cell above.</span>'
 
 
+def get_scheduler_summary(compute_priority: int, efficiency_priority: int, carbon_priority: int) -> tuple[str, str]:
+    if compute_priority >= max(efficiency_priority, carbon_priority):
+        return (
+            "Performance-first routing",
+            "Jobs prefer the fastest available node pool. Energy and carbon checks are minimized.",
+        )
+    if carbon_priority >= compute_priority and carbon_priority >= efficiency_priority:
+        return (
+            "Low-carbon routing",
+            "Jobs prefer regions with cleaner grid mix and better renewable availability.",
+        )
+    return (
+        "Balanced efficiency routing",
+        "Jobs aim for good throughput while favoring efficient nodes and cleaner regions.",
+    )
+
+
+def get_policy_planner_url() -> str:
+    html = POLICY_PLANNER_PATH.read_text(encoding="utf-8")
+    encoded = base64.b64encode(html.encode("utf-8")).decode("ascii")
+    return f"data:text/html;base64,{encoded}"
+
+
 st.set_page_config(
     page_title="SwarmTrain Platform",
     page_icon="ST",
@@ -209,6 +234,9 @@ for key, default in [
     ("cell1_hidden_states", None),
     ("cell1_sentence", None),
     ("server_logs", []),
+    ("compute_priority", 80),
+    ("efficiency_priority", 55),
+    ("carbon_priority", 45),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -317,6 +345,117 @@ st.markdown(
 
 st.markdown(
     """
+    <div class="scheduler-grid">
+      <div class="scheduler-panel">
+        <div class="panel-eyebrow">Client policy</div>
+        <h3>Workload routing controls</h3>
+        <p>
+          This demo lets a client decide whether to prioritize raw compute,
+          energy efficiency, or carbon-aware scheduling. Set energy or carbon
+          to <code>0</code> if they do not matter for the run.
+        </p>
+    """,
+    unsafe_allow_html=True,
+)
+
+planner_url = get_policy_planner_url()
+st.markdown(
+    f"""
+    <a class="planner-link" href="{planner_url}" target="_blank" rel="noopener noreferrer">
+      Open detailed client policy planner
+    </a>
+    <div class="planner-link-note">
+      Opens a standalone HTML planner with an interactive world map, cleaner-energy regions,
+      and demo compute-node locations using OpenStreetMap + Leaflet.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+compute_priority = st.slider(
+    "Compute priority",
+    min_value=0,
+    max_value=100,
+    value=st.session_state.compute_priority,
+    key="compute_priority",
+    help="Higher values push the demo toward the fastest available compute.",
+)
+efficiency_priority = st.slider(
+    "Energy efficiency priority",
+    min_value=0,
+    max_value=100,
+    value=st.session_state.efficiency_priority,
+    key="efficiency_priority",
+    help="Higher values prefer nodes that deliver more work per watt.",
+)
+carbon_priority = st.slider(
+    "Carbon footprint priority",
+    min_value=0,
+    max_value=100,
+    value=st.session_state.carbon_priority,
+    key="carbon_priority",
+    help="Higher values prefer cleaner-energy regions for dispatch.",
+)
+
+summary_title, summary_text = get_scheduler_summary(
+    compute_priority,
+    efficiency_priority,
+    carbon_priority,
+)
+
+st.markdown(
+    f"""
+        <div class="policy-summary">
+          <div class="policy-summary-title">{summary_title}</div>
+          <div class="policy-summary-text">{summary_text}</div>
+        </div>
+      </div>
+      <div class="map-panel">
+        <div class="panel-eyebrow">Grid awareness</div>
+        <h3>Clean-energy map and demo nodes</h3>
+        <p>
+          Green zones represent cleaner energy availability. Blue markers show the
+          compute nodes currently participating in the demo scheduler.
+        </p>
+        <div class="demo-map">
+          <div class="region region-west">
+            <div class="region-label">West clean grid</div>
+            <div class="region-metric">Renewables 78%</div>
+          </div>
+          <div class="region region-central">
+            <div class="region-label">Central mixed grid</div>
+            <div class="region-metric">Renewables 46%</div>
+          </div>
+          <div class="region region-east">
+            <div class="region-label">East clean grid</div>
+            <div class="region-metric">Renewables 71%</div>
+          </div>
+          <div class="map-node map-node-1">
+            <span class="map-node-dot"></span>
+            <span class="map-node-label">Node 1 · London edge</span>
+          </div>
+          <div class="map-node map-node-2">
+            <span class="map-node-dot"></span>
+            <span class="map-node-label">Node 2 · Frankfurt GPU</span>
+          </div>
+          <div class="map-node map-node-3">
+            <span class="map-node-dot map-node-dot-muted"></span>
+            <span class="map-node-label">Reserve node · Nordic hydro</span>
+          </div>
+        </div>
+        <div class="map-legend">
+          <span class="legend-pill legend-clean">Cleaner energy zone</span>
+          <span class="legend-pill legend-mixed">Mixed grid zone</span>
+          <span class="legend-pill legend-node">Compute node</span>
+        </div>
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
     <div class="md-cell">
       <h3>SwarmTrain - Interactive Pipeline Demo</h3>
       This notebook coordinates a two-stage <code>Pipeline Parallelism</code> pass over
@@ -399,6 +538,11 @@ if run_cell1:
                 "type": "cell1_payload",
                 "sentence": sentence,
                 "tokens": tokens,
+                "policy": {
+                    "compute_priority": compute_priority,
+                    "efficiency_priority": efficiency_priority,
+                    "carbon_priority": carbon_priority,
+                },
             },
         )
         if err:
@@ -411,6 +555,9 @@ if run_cell1:
                 st.session_state.cell1_hidden_states = hs
                 st.session_state.cell1_logs.append(f"[NODE 1] {log}")
                 st.session_state.cell1_logs.append(f"[NODE 1] Hidden states (8-dim): {hs}")
+                st.session_state.cell1_logs.append(
+                    f"[POLICY] compute={compute_priority} efficiency={efficiency_priority} carbon={carbon_priority}"
+                )
                 st.session_state.cell1_logs.append("Cell 1 complete - hidden states cached for Cell 2")
             except queue.Empty:
                 st.session_state.cell1_logs.append("Timeout waiting for Node 1.")
@@ -493,6 +640,11 @@ if run_cell2:
                 "type": "cell2_payload",
                 "hidden_states": hs,
                 "source_sentence": st.session_state.cell1_sentence or "",
+                "policy": {
+                    "compute_priority": compute_priority,
+                    "efficiency_priority": efficiency_priority,
+                    "carbon_priority": carbon_priority,
+                },
             },
         )
         if err:
@@ -507,6 +659,7 @@ if run_cell2:
                 st.session_state.cell2_logs.append(
                     f'[NODE 2] RESULT - Predicted next token: "{word}" (confidence: {confidence:.4f})'
                 )
+                st.session_state.cell2_logs.append(f"[POLICY] {summary_title}")
                 st.session_state.cell2_logs.append(
                     f'Full forward pass complete: "{st.session_state.cell1_sentence}" -> "{word}"'
                 )
