@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 import websockets
 from websockets.server import serve
 
@@ -40,6 +41,146 @@ STORIES_PATH = APP_DIR / "tinystories.txt"
 CSS_PATH = APP_DIR / "styles.css"
 POLICY_PLANNER_PATH = APP_DIR / "client_policy_planner.html"
 
+NODE_LOCATION_METADATA = {
+    "1": {
+        "name": "Node 1",
+        "coords": [51.5072, -0.1276],
+        "role": "Attention layer candidate",
+        "region": "London edge",
+    },
+    "2": {
+        "name": "Node 2",
+        "coords": [50.1109, 8.6821],
+        "role": "LM head candidate",
+        "region": "Frankfurt core",
+    },
+    "3": {
+        "name": "Node 3",
+        "coords": [64.1466, -21.9426],
+        "role": "Reserve sustainable pool",
+        "region": "Reykjavik hydro",
+    },
+    "4": {
+        "name": "Node 4",
+        "coords": [39.0438, -77.4874],
+        "role": "Burst compute pool",
+        "region": "Virginia cloud",
+    },
+}
+
+PLANNER_FALLBACK_NODES = [
+    {
+        "id": "fallback-london",
+        "nodeId": "LDN",
+        "name": "London Edge",
+        "coords": [51.5072, -0.1276],
+        "role": "Latency-optimized inference hub",
+        "region": "United Kingdom",
+        "performance": 78,
+        "efficiency": 66,
+        "carbon": 33,
+    },
+    {
+        "id": "fallback-frankfurt",
+        "nodeId": "FRA",
+        "name": "Frankfurt Core",
+        "coords": [50.1109, 8.6821],
+        "role": "Balanced training pool",
+        "region": "Germany",
+        "performance": 82,
+        "efficiency": 71,
+        "carbon": 29,
+    },
+    {
+        "id": "fallback-reykjavik",
+        "nodeId": "REK",
+        "name": "Reykjavik Hydro",
+        "coords": [64.1466, -21.9426],
+        "role": "Low-carbon reserve cluster",
+        "region": "Iceland",
+        "performance": 64,
+        "efficiency": 94,
+        "carbon": 8,
+    },
+    {
+        "id": "fallback-virginia",
+        "nodeId": "IAD",
+        "name": "Virginia Cloud",
+        "coords": [39.0438, -77.4874],
+        "role": "Burst compute pool",
+        "region": "United States East",
+        "performance": 88,
+        "efficiency": 62,
+        "carbon": 47,
+    },
+    {
+        "id": "fallback-quebec",
+        "nodeId": "YUL",
+        "name": "Quebec Hydro",
+        "coords": [45.5017, -73.5673],
+        "role": "Hydro-backed batch cluster",
+        "region": "Canada",
+        "performance": 73,
+        "efficiency": 89,
+        "carbon": 14,
+    },
+    {
+        "id": "fallback-saopaulo",
+        "nodeId": "GRU",
+        "name": "Sao Paulo Grid",
+        "coords": [-23.5505, -46.6333],
+        "role": "South America routing edge",
+        "region": "Brazil",
+        "performance": 69,
+        "efficiency": 74,
+        "carbon": 26,
+    },
+    {
+        "id": "fallback-nairobi",
+        "nodeId": "NBO",
+        "name": "Nairobi Solar Edge",
+        "coords": [-1.2921, 36.8219],
+        "role": "East Africa clean edge",
+        "region": "Kenya",
+        "performance": 61,
+        "efficiency": 83,
+        "carbon": 18,
+    },
+    {
+        "id": "fallback-mumbai",
+        "nodeId": "BOM",
+        "name": "Mumbai Compute Port",
+        "coords": [19.076, 72.8777],
+        "role": "High-demand regional pool",
+        "region": "India",
+        "performance": 84,
+        "efficiency": 54,
+        "carbon": 58,
+    },
+    {
+        "id": "fallback-singapore",
+        "nodeId": "SIN",
+        "name": "Singapore Exchange",
+        "coords": [1.3521, 103.8198],
+        "role": "Global traffic exchange node",
+        "region": "Singapore",
+        "performance": 80,
+        "efficiency": 68,
+        "carbon": 41,
+    },
+    {
+        "id": "fallback-sydney",
+        "nodeId": "SYD",
+        "name": "Sydney Coastal Node",
+        "coords": [-33.8688, 151.2093],
+        "role": "Oceania distributed trainer",
+        "region": "Australia",
+        "performance": 72,
+        "efficiency": 76,
+        "carbon": 24,
+    },
+]
+
 if not STORIES_PATH.exists():
     STORIES_PATH.write_text("\n".join(TINYSTORIES), encoding="utf-8")
 
@@ -51,7 +192,7 @@ class SwarmCoordinator:
         self.host = host
         self.port = port
         self.server_uri = f"ws://{host}:{port}"
-        self.connected_nodes: dict[str, "websockets.WebSocketServerProtocol"] = {}
+        self.connected_nodes: dict[str, dict] = {}
         self.lock = threading.Lock()
         self.cell1_result_queue: queue.Queue = queue.Queue()
         self.cell2_result_queue: queue.Queue = queue.Queue()
@@ -98,15 +239,28 @@ class SwarmCoordinator:
 
                 if msg_type == "register":
                     node_id = str(msg.get("node", ""))
-                    if node_id not in {"1", "2"}:
+                    profile = msg.get("profile", {})
+                    if node_id not in {"1", "2", "3", "4"}:
                         await websocket.send(
                             json.dumps({"type": "error", "message": f"Invalid node id: {node_id}"})
                         )
                         continue
 
                     with self.lock:
-                        self.connected_nodes[node_id] = websocket
-                    self.log_queue.put(f"Node {node_id} connected [{websocket.remote_address}]")
+                        self.connected_nodes[node_id] = {
+                            "websocket": websocket,
+                            "profile": {
+                                "compute_capacity": int(profile.get("compute_capacity", 50)),
+                                "clean_energy_level": int(profile.get("clean_energy_level", 50)),
+                                "carbon_footprint": int(profile.get("carbon_footprint", 50)),
+                            },
+                        }
+                    self.log_queue.put(
+                        f"Node {node_id} connected [{websocket.remote_address}] "
+                        f"cap={profile.get('compute_capacity', 50)} "
+                        f"clean={profile.get('clean_energy_level', 50)} "
+                        f"carbon={profile.get('carbon_footprint', 50)}"
+                    )
                     await websocket.send(json.dumps({"type": "ack", "message": f"Node {node_id} registered"}))
 
                 elif msg_type == "cell1_result":
@@ -131,12 +285,22 @@ class SwarmCoordinator:
         with self.lock:
             return node_id in self.connected_nodes
 
+    def get_connected_nodes_snapshot(self) -> dict[str, dict]:
+        with self.lock:
+            return {
+                node_id: {
+                    "profile": node_data["profile"].copy(),
+                }
+                for node_id, node_data in self.connected_nodes.items()
+            }
+
     def send_to_node(self, node_id: str, payload: dict) -> str | None:
         with self.lock:
-            ws = self.connected_nodes.get(node_id)
+            node = self.connected_nodes.get(node_id)
 
-        if ws is None:
+        if node is None:
             return f"Node {node_id} is not connected"
+        ws = node["websocket"]
 
         future = asyncio.run_coroutine_threadsafe(ws.send(json.dumps(payload)), self.loop)
         try:
@@ -212,8 +376,92 @@ def get_scheduler_summary(compute_priority: int, efficiency_priority: int, carbo
     )
 
 
-def get_policy_planner_url() -> str:
+def rank_connected_nodes(node_snapshot: dict[str, dict], compute_priority: int, efficiency_priority: int, carbon_priority: int) -> list[dict]:
+    ranked = []
+    for node_id, node_data in node_snapshot.items():
+        profile = node_data["profile"]
+        carbon_preference = 100 - profile["carbon_footprint"]
+        score = (
+            profile["compute_capacity"] * (compute_priority / 100)
+            + profile["clean_energy_level"] * (efficiency_priority / 100)
+            + carbon_preference * (carbon_priority / 100)
+        )
+        ranked.append(
+            {
+                "node_id": node_id,
+                "name": f"Node {node_id}",
+                "role": "Generic compute worker",
+                "region": "Live demo node",
+                "compute_capacity": profile["compute_capacity"],
+                "clean_energy_level": profile["clean_energy_level"],
+                "carbon_footprint": profile["carbon_footprint"],
+                "score": round(score, 1),
+            }
+        )
+    return sorted(ranked, key=lambda item: item["score"], reverse=True)
+
+
+def build_planner_nodes(node_snapshot: dict[str, dict]) -> list[dict]:
+    planner_nodes = [node.copy() for node in PLANNER_FALLBACK_NODES]
+    fallback_index = {node["nodeId"]: idx for idx, node in enumerate(planner_nodes)}
+    for node_id, node_data in sorted(node_snapshot.items(), key=lambda item: item[0]):
+        profile = node_data["profile"]
+        meta = NODE_LOCATION_METADATA.get(
+            node_id,
+            {
+                "name": f"Node {node_id}",
+                "coords": [20, 0],
+                "role": "Generic compute worker",
+                "region": "Live demo node",
+            },
+        )
+        live_node = {
+            "id": f"node-{node_id}",
+            "nodeId": node_id,
+            "name": meta["name"],
+            "coords": meta["coords"],
+            "role": meta["role"],
+            "region": meta["region"],
+            "performance": profile["compute_capacity"],
+            "efficiency": profile["clean_energy_level"],
+            "carbon": profile["carbon_footprint"],
+        }
+        if node_id in fallback_index:
+            planner_nodes[fallback_index[node_id]] = live_node
+        else:
+            planner_nodes.append(live_node)
+    return planner_nodes
+
+
+def build_policy_planner_html(
+    compute_priority: int,
+    efficiency_priority: int,
+    carbon_priority: int,
+    node_snapshot: dict[str, dict],
+    embed_mode: bool,
+) -> str:
     html = POLICY_PLANNER_PATH.read_text(encoding="utf-8")
+    html = html.replace("__INITIAL_COMPUTE__", str(compute_priority))
+    html = html.replace("__INITIAL_EFFICIENCY__", str(efficiency_priority))
+    html = html.replace("__INITIAL_CARBON__", str(carbon_priority))
+    html = html.replace("__NODE_DATA__", json.dumps(build_planner_nodes(node_snapshot)))
+    html = html.replace("__EMBED_MODE__", "true" if embed_mode else "false")
+    return html
+
+
+def get_policy_planner_url(
+    compute_priority: int,
+    efficiency_priority: int,
+    carbon_priority: int,
+    node_snapshot: dict[str, dict],
+) -> str:
+    html = build_policy_planner_html(
+        compute_priority=compute_priority,
+        efficiency_priority=efficiency_priority,
+        carbon_priority=carbon_priority,
+        node_snapshot=node_snapshot,
+        embed_mode=False,
+    )
     encoded = base64.b64encode(html.encode("utf-8")).decode("ascii")
     return f"data:text/html;base64,{encoded}"
 
@@ -243,12 +491,7 @@ for key, default in [
 
 collect_server_logs(coordinator)
 
-n1_online = coordinator.is_node_online("1")
-n2_online = coordinator.is_node_online("2")
-n1_cls = "badge-on" if n1_online else "badge-off"
-n2_cls = "badge-on" if n2_online else "badge-off"
-n1_icon = "●" if n1_online else "○"
-n2_icon = "●" if n2_online else "○"
+connected_nodes_snapshot = coordinator.get_connected_nodes_snapshot()
 
 with st.sidebar:
     st.markdown(
@@ -262,20 +505,31 @@ with st.sidebar:
     )
 
     st.markdown('<div class="sidebar-section"><h4>Node Registry</h4>', unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div class="node-badge">
-          <span>Node 1 - Attention</span>
-          <span class="{n1_cls}">{n1_icon} {"ONLINE" if n1_online else "OFFLINE"}</span>
-        </div>
-        <div class="node-badge node-badge-last">
-          <span>Node 2 - LM Head</span>
-          <span class="{n2_cls}">{n2_icon} {"ONLINE" if n2_online else "OFFLINE"}</span>
-        </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    for node_id in ["1", "2", "3", "4"]:
+        node_data = connected_nodes_snapshot.get(node_id)
+        online = node_data is not None
+        badge_cls = "badge-on" if online else "badge-off"
+        icon = "â—" if online else "â—‹"
+        profile_line = ""
+        if online:
+            profile = node_data["profile"]
+            profile_line = (
+                f'<div class="node-profile-line">cap {profile["compute_capacity"]} Â· '
+                f'clean {profile["clean_energy_level"]} Â· carbon {profile["carbon_footprint"]}</div>'
+            )
+        st.markdown(
+            f"""
+            <div class="node-badge-card">
+              <div class="node-badge">
+                <span>Node {node_id}</span>
+                <span class="{badge_cls}">{icon} {"ONLINE" if online else "OFFLINE"}</span>
+              </div>
+              {profile_line}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="sidebar-section"><h4>Transport</h4>', unsafe_allow_html=True)
     st.markdown(
@@ -319,7 +573,7 @@ st.markdown(
       <div class="swarm-logo">ST</div>
       <div>
         <h1>SwarmTrain Platform</h1>
-        <div class="subtitle">Decentralised Pipeline-Parallel Training · Notebook Workspace · v0.1-alpha</div>
+        <div class="subtitle">Decentralised Pipeline-Parallel Training Â· Notebook Workspace Â· v0.1-alpha</div>
       </div>
       <div class="header-status">
         <div class="status-pill"><div class="status-dot"></div>Coordinator online</div>
@@ -343,129 +597,161 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown(
-    """
-    <div class="scheduler-grid">
-      <div class="scheduler-panel">
-        <div class="panel-eyebrow">Client policy</div>
-        <h3>Workload routing controls</h3>
-        <p>
-          This demo lets a client decide whether to prioritize raw compute,
-          energy efficiency, or carbon-aware scheduling. Set energy or carbon
-          to <code>0</code> if they do not matter for the run.
-        </p>
-    """,
-    unsafe_allow_html=True,
-)
+policy_col, map_col = st.columns([0.92, 1.3], gap="large")
 
-planner_url = get_policy_planner_url()
-st.markdown(
-    f"""
-    <a class="planner-link" href="{planner_url}" target="_blank" rel="noopener noreferrer">
-      Open detailed client policy planner
-    </a>
-    <div class="planner-link-note">
-      Opens a standalone HTML planner with an interactive world map, cleaner-energy regions,
-      and demo compute-node locations using OpenStreetMap + Leaflet.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+with policy_col:
+    st.markdown(
+        """
+        <div class="scheduler-panel">
+          <div class="panel-eyebrow">Client policy</div>
+          <h3>Workload routing controls</h3>
+          <p>
+            Adjust the policy below to decide whether this run should prioritize
+            compute throughput, energy efficiency, or lower carbon routing.
+            Setting efficiency or carbon to <code>0</code> makes them optional
+            for the demo scheduler.
+          </p>
+        """,
+        unsafe_allow_html=True,
+    )
 
-compute_priority = st.slider(
-    "Compute priority",
-    min_value=0,
-    max_value=100,
-    value=st.session_state.compute_priority,
-    key="compute_priority",
-    help="Higher values push the demo toward the fastest available compute.",
-)
-efficiency_priority = st.slider(
-    "Energy efficiency priority",
-    min_value=0,
-    max_value=100,
-    value=st.session_state.efficiency_priority,
-    key="efficiency_priority",
-    help="Higher values prefer nodes that deliver more work per watt.",
-)
-carbon_priority = st.slider(
-    "Carbon footprint priority",
-    min_value=0,
-    max_value=100,
-    value=st.session_state.carbon_priority,
-    key="carbon_priority",
-    help="Higher values prefer cleaner-energy regions for dispatch.",
-)
+    compute_priority = st.slider(
+        "Compute priority",
+        min_value=0,
+        max_value=100,
+        value=st.session_state.compute_priority,
+        key="compute_priority",
+        help="Higher values push the demo toward the fastest available compute.",
+    )
+    efficiency_priority = st.slider(
+        "Clean energy priority",
+        min_value=0,
+        max_value=100,
+        value=st.session_state.efficiency_priority,
+        key="efficiency_priority",
+        help="Higher values prefer nodes that deliver more work per watt.",
+    )
+    carbon_priority = st.slider(
+        "Carbon footprint priority",
+        min_value=0,
+        max_value=100,
+        value=st.session_state.carbon_priority,
+        key="carbon_priority",
+        help="Higher values prefer cleaner-energy regions for dispatch.",
+    )
 
-summary_title, summary_text = get_scheduler_summary(
-    compute_priority,
-    efficiency_priority,
-    carbon_priority,
-)
+    summary_title, summary_text = get_scheduler_summary(
+        compute_priority,
+        efficiency_priority,
+        carbon_priority,
+    )
+    ranked_nodes = rank_connected_nodes(
+        connected_nodes_snapshot,
+        compute_priority,
+        efficiency_priority,
+        carbon_priority,
+    )
+    top_node = ranked_nodes[0] if ranked_nodes else None
 
-st.markdown(
-    f"""
-        <div class="policy-summary">
-          <div class="policy-summary-title">{summary_title}</div>
-          <div class="policy-summary-text">{summary_text}</div>
+    if top_node:
+        st.markdown(
+            f"""
+                <div class="policy-summary">
+                  <div class="policy-summary-title">{summary_title}</div>
+                  <div class="policy-summary-text">{summary_text}</div>
+                  <div class="policy-metric-grid">
+                    <div class="policy-metric-card">
+                      <div class="policy-metric-label">Stage 1 candidate</div>
+                      <div class="policy-metric-value">Node {ranked_nodes[0]["node_id"]}</div>
+                    </div>
+                    <div class="policy-metric-card">
+                      <div class="policy-metric-label">Stage 2 candidate</div>
+                      <div class="policy-metric-value">Node {ranked_nodes[1]["node_id"] if len(ranked_nodes) > 1 else "Waiting for more nodes"}</div>
+                    </div>
+                    <div class="policy-metric-card">
+                      <div class="policy-metric-label">Top policy score</div>
+                      <div class="policy-metric-value">{top_node["score"]}</div>
+                    </div>
+                  </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            """
+                <div class="policy-summary">
+                  <div class="policy-summary-title">Waiting for nodes</div>
+                  <div class="policy-summary-text">
+                    Start at least two nodes and enter their compute, clean-energy,
+                    and carbon settings to enable automatic routing.
+                  </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    planner_url = get_policy_planner_url(
+        compute_priority,
+        efficiency_priority,
+        carbon_priority,
+        connected_nodes_snapshot,
+    )
+    st.markdown(
+        f"""
+        <a class="planner-link" href="{planner_url}" target="_blank" rel="noopener noreferrer">
+          Open planner in a new tab
+        </a>
+        <div class="planner-link-note">
+          The map on the right is the same real planner, embedded directly in this
+          dashboard and seeded from these policy values.
         </div>
-      </div>
-      <div class="map-panel">
-        <div class="panel-eyebrow">Grid awareness</div>
-        <h3>Clean-energy map and demo nodes</h3>
-        <p>
-          Green zones represent cleaner energy availability. Blue markers show the
-          compute nodes currently participating in the demo scheduler.
-        </p>
-        <div class="demo-map">
-          <div class="region region-west">
-            <div class="region-label">West clean grid</div>
-            <div class="region-metric">Renewables 78%</div>
-          </div>
-          <div class="region region-central">
-            <div class="region-label">Central mixed grid</div>
-            <div class="region-metric">Renewables 46%</div>
-          </div>
-          <div class="region region-east">
-            <div class="region-label">East clean grid</div>
-            <div class="region-metric">Renewables 71%</div>
-          </div>
-          <div class="map-node map-node-1">
-            <span class="map-node-dot"></span>
-            <span class="map-node-label">Node 1 · London edge</span>
-          </div>
-          <div class="map-node map-node-2">
-            <span class="map-node-dot"></span>
-            <span class="map-node-label">Node 2 · Frankfurt GPU</span>
-          </div>
-          <div class="map-node map-node-3">
-            <span class="map-node-dot map-node-dot-muted"></span>
-            <span class="map-node-label">Reserve node · Nordic hydro</span>
-          </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with map_col:
+    st.markdown(
+        """
+        <div class="map-panel">
+          <div class="panel-eyebrow">Grid awareness</div>
+          <h3>Interactive clean-energy map</h3>
+          <p>
+            The selected policy values drive the highlighted compute node,
+            region weighting, and sustainability recommendation.
+          </p>
         </div>
-        <div class="map-legend">
-          <span class="legend-pill legend-clean">Cleaner energy zone</span>
-          <span class="legend-pill legend-mixed">Mixed grid zone</span>
-          <span class="legend-pill legend-node">Compute node</span>
-        </div>
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+        """,
+        unsafe_allow_html=True,
+    )
+    components.html(
+        build_policy_planner_html(
+            compute_priority=compute_priority,
+            efficiency_priority=efficiency_priority,
+            carbon_priority=carbon_priority,
+            node_snapshot=connected_nodes_snapshot,
+            embed_mode=True,
+        ),
+        height=860,
+        scrolling=False,
+    )
 
 st.markdown(
     """
     <div class="md-cell">
       <h3>SwarmTrain - Interactive Pipeline Demo</h3>
       This notebook coordinates a two-stage <code>Pipeline Parallelism</code> pass over
-      the <em>TinyStories</em> corpus. Each cell dispatches work to a registered
-      <strong>SwarmTrain Node</strong> over a raw WebSocket connection.
+      the <em>TinyStories</em> corpus. The scheduler ranks all connected nodes using
+      the selected policy and automatically chooses the best two nodes for Stage 1
+      and Stage 2.
       <br><br>
-      <span class="tag">CELL 1</span> Tokenise -> Attention Layer |
-      <span class="tag">CELL 2</span> Hidden States -> LM Head -> Predicted Token
+      <span class="tag">STAGE 1</span> Tokenise -> Attention Layer |
+      <span class="tag">STAGE 2</span> Hidden States -> LM Head -> Predicted Token
       <br><br>
-      Start both nodes first: <code>python node.py</code> (run twice, choose Node 1 then Node 2).
+      Start any two or more nodes first: <code>python node.py</code>, then enter each node's
+      profile at startup.
     </div>
     """,
     unsafe_allow_html=True,
@@ -476,73 +762,85 @@ st.markdown('<hr class="nb-divider">', unsafe_allow_html=True)
 st.markdown(
     """
     <div class="md-cell">
-      <h3>Stage 1 - Tokenisation &amp; Attention Layer</h3>
-      Reads a random sentence from <code>tinystories.txt</code>, converts it to a
-      simple integer token sequence, and ships the payload to <strong>Node 1</strong>.
-      Node 1 simulates the <em>multi-head self-attention</em> computation and returns
-      a mock <strong>hidden-state vector</strong> to this dashboard.
+      <h3>Auto-Routed Distributed Pipeline</h3>
+      A single run now selects the best two connected nodes based on your
+      policy preferences and each node's registered <code>compute capacity</code>,
+      <code>clean energy level</code>, and <code>carbon footprint</code>.
     </div>
     """,
     unsafe_allow_html=True,
 )
 
 cell1_code = """\
-# Cell 1: Attention Layer (executed on Node 1)
-import random, hashlib
-
-def tokenise(sentence: str) -> list[int]:
-    return [ord(c) % 512 for c in sentence.lower() if c.strip()]
-
-def attention_forward(tokens: list[int]) -> list[float]:
-    seed = sum(tokens) % (2**32)
-    rng  = random.Random(seed)
-    return [round(rng.gauss(0, 1), 4) for _ in range(8)]
+# Auto pipeline selection
+ranked_nodes = rank_connected_nodes(connected_nodes, policy)
+stage1_node, stage2_node = ranked_nodes[:2]
 
 sentence = random.choice(TINYSTORIES)
-tokens   = tokenise(sentence)
-payload  = {"type": "cell1_payload", "sentence": sentence, "tokens": tokens}
+tokens = tokenise(sentence)
+
+send(stage1_node, {"type": "cell1_payload", "sentence": sentence, "tokens": tokens})
+hidden_states = wait_for_stage1_result()
+
+send(stage2_node, {"type": "cell2_payload", "hidden_states": hidden_states})
+prediction = wait_for_stage2_result()
 """
 
 st.markdown(
-    '<div class="nb-cell"><div class="nb-cell-header"><span class="cell-index">In [1]</span> attention_layer.py - Node 1 Dispatch</div>',
+    '<div class="nb-cell"><div class="nb-cell-header"><span class="cell-index">Run</span> pipeline_router.py - Dynamic Node Selection</div>',
     unsafe_allow_html=True,
 )
 st.code(cell1_code, language="python")
 st.markdown("</div>", unsafe_allow_html=True)
 
-col_btn1, col_status1 = st.columns([1, 4])
-with col_btn1:
-    run_cell1 = st.button("Run Cell 1", key="run_c1", use_container_width=True, type="primary")
-with col_status1:
-    if not n1_online:
-        st.warning("Node 1 is offline - start `python node.py` and register as Node 1")
+run_pipeline = st.button("Run Distributed Pipeline", use_container_width=True, type="primary")
+
+if len(ranked_nodes) < 2:
+    st.warning("Start at least two connected nodes to run the pipeline.")
 
 cell1_out = st.empty()
+cell2_out = st.empty()
 
-if run_cell1:
-    if not n1_online:
-        st.session_state.cell1_logs.append("ERROR - Node 1 not connected. Launch node.py first.")
+if run_pipeline:
+    st.session_state.cell1_logs = []
+    st.session_state.cell2_logs = []
+
+    if len(ranked_nodes) < 2:
+        st.session_state.cell1_logs.append("ERROR - Need at least two connected nodes.")
     else:
+        stage1_node = ranked_nodes[0]
+        stage2_node = ranked_nodes[1]
         sentence = random.choice(TINYSTORIES)
         tokens = [ord(c) % 512 for c in sentence.lower() if c.strip()]
+        policy = {
+            "compute_priority": compute_priority,
+            "efficiency_priority": efficiency_priority,
+            "carbon_priority": carbon_priority,
+        }
         st.session_state.cell1_sentence = sentence
-        st.session_state.cell1_logs.append("[SERVER] Dispatching Cell 1 payload...")
+
+        st.session_state.cell1_logs.append(
+            f'[SCHEDULER] Stage 1 -> Node {stage1_node["node_id"]} | '
+            f'cap={stage1_node["compute_capacity"]} clean={stage1_node["clean_energy_level"]} '
+            f'carbon={stage1_node["carbon_footprint"]} score={stage1_node["score"]}'
+        )
+        st.session_state.cell1_logs.append(
+            f'[SCHEDULER] Stage 2 -> Node {stage2_node["node_id"]} | '
+            f'cap={stage2_node["compute_capacity"]} clean={stage2_node["clean_energy_level"]} '
+            f'carbon={stage2_node["carbon_footprint"]} score={stage2_node["score"]}'
+        )
         st.session_state.cell1_logs.append(f'[SERVER] Sentence  : "{sentence}"')
         st.session_state.cell1_logs.append(
             f"[SERVER] Token seq : {tokens[:12]}{'...' if len(tokens) > 12 else ''}"
         )
 
         err = coordinator.send_to_node(
-            "1",
+            stage1_node["node_id"],
             {
                 "type": "cell1_payload",
                 "sentence": sentence,
                 "tokens": tokens,
-                "policy": {
-                    "compute_priority": compute_priority,
-                    "efficiency_priority": efficiency_priority,
-                    "carbon_priority": carbon_priority,
-                },
+                "policy": policy,
             },
         )
         if err:
@@ -551,16 +849,45 @@ if run_cell1:
             try:
                 result = coordinator.wait_for_cell1_result(timeout=10.0)
                 hs = result.get("hidden_states", [])
-                log = result.get("log", "")
+                stage1_result_node = result.get("node_id", stage1_node["node_id"])
                 st.session_state.cell1_hidden_states = hs
-                st.session_state.cell1_logs.append(f"[NODE 1] {log}")
-                st.session_state.cell1_logs.append(f"[NODE 1] Hidden states (8-dim): {hs}")
-                st.session_state.cell1_logs.append(
-                    f"[POLICY] compute={compute_priority} efficiency={efficiency_priority} carbon={carbon_priority}"
+                st.session_state.cell1_logs.append(f'[NODE {stage1_result_node}] {result.get("log", "")}')
+                st.session_state.cell1_logs.append(f"[NODE {stage1_result_node}] Hidden states (8-dim): {hs}")
+                st.session_state.cell1_logs.append("Stage 1 complete - forwarding to Stage 2.")
+
+                st.session_state.cell2_logs.append(
+                    f'[SCHEDULER] Forwarding Stage 1 output from Node {stage1_result_node} '
+                    f'to Node {stage2_node["node_id"]}.'
                 )
-                st.session_state.cell1_logs.append("Cell 1 complete - hidden states cached for Cell 2")
+                st.session_state.cell2_logs.append(f"[SERVER] Hidden states (8-dim): {hs}")
+
+                err = coordinator.send_to_node(
+                    stage2_node["node_id"],
+                    {
+                        "type": "cell2_payload",
+                        "hidden_states": hs,
+                        "source_sentence": sentence,
+                        "policy": policy,
+                    },
+                )
+                if err:
+                    st.session_state.cell2_logs.append(f"ERROR - {err}")
+                else:
+                    result2 = coordinator.wait_for_cell2_result(timeout=10.0)
+                    stage2_result_node = result2.get("node_id", stage2_node["node_id"])
+                    word = result2.get("predicted_word", "?")
+                    confidence = result2.get("confidence", 0.0)
+                    st.session_state.cell2_logs.append(f'[NODE {stage2_result_node}] {result2.get("log", "")}')
+                    st.session_state.cell2_logs.append(
+                        f'[NODE {stage2_result_node}] RESULT - Predicted next token: "{word}" '
+                        f"(confidence: {confidence:.4f})"
+                    )
+                    st.session_state.cell2_logs.append(f"[POLICY] {summary_title}")
+                    st.session_state.cell2_logs.append(
+                        f'Full forward pass complete: "{sentence}" -> "{word}"'
+                    )
             except queue.Empty:
-                st.session_state.cell1_logs.append("Timeout waiting for Node 1.")
+                st.session_state.cell1_logs.append("Timeout waiting for Stage 1 node.")
             collect_server_logs(coordinator)
 
 cell1_out.markdown(
@@ -569,103 +896,6 @@ cell1_out.markdown(
 )
 
 st.markdown('<hr class="nb-divider">', unsafe_allow_html=True)
-
-st.markdown(
-    """
-    <div class="md-cell">
-      <h3>Stage 2 - Language Model Head &amp; Token Prediction</h3>
-      Takes the <strong>hidden states</strong> returned by Node 1 and forwards them to
-      <strong>Node 2</strong>. Node 2 simulates a linear projection over the vocabulary
-      followed by an <em>argmax</em> to produce the most likely <strong>next token</strong>.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-cell2_code = """\
-# Cell 2: Language Model Head (executed on Node 2)
-import math
-
-VOCAB = ["the","a","and","to","of","in","was","she","he",
-         "little","big","old","new","happy","sad","ran",
-         "walked","found","loved","said","time","day","night"]
-
-def lm_head_forward(hidden_states: list[float]) -> dict:
-    logits = []
-    for i, word in enumerate(VOCAB):
-        weight = sum(h * math.sin(i * 0.7 + j) for j, h in enumerate(hidden_states))
-        logits.append((weight, word))
-
-    max_l   = max(l for l, _ in logits)
-    exp_sum = sum(math.exp(l - max_l) for l, _ in logits)
-    probs   = [(math.exp(l - max_l) / exp_sum, w) for l, w in logits]
-
-    predicted = max(probs, key=lambda x: x[0])
-    return {"predicted_word": predicted[1], "confidence": round(predicted[0], 4)}
-
-payload = {"type": "cell2_payload", "hidden_states": hidden_states_from_cell1}
-"""
-
-st.markdown(
-    '<div class="nb-cell"><div class="nb-cell-header"><span class="cell-index">In [2]</span> lm_head.py - Node 2 Dispatch</div>',
-    unsafe_allow_html=True,
-)
-st.code(cell2_code, language="python")
-st.markdown("</div>", unsafe_allow_html=True)
-
-col_btn2, col_status2 = st.columns([1, 4])
-with col_btn2:
-    run_cell2 = st.button("Run Cell 2", key="run_c2", use_container_width=True, type="primary")
-with col_status2:
-    if not n2_online:
-        st.warning("Node 2 is offline - start `python node.py` and register as Node 2")
-    elif st.session_state.cell1_hidden_states is None:
-        st.info("Run Cell 1 first to generate hidden states.")
-
-cell2_out = st.empty()
-
-if run_cell2:
-    if not n2_online:
-        st.session_state.cell2_logs.append("ERROR - Node 2 not connected.")
-    elif st.session_state.cell1_hidden_states is None:
-        st.session_state.cell2_logs.append("ERROR - No hidden states available. Run Cell 1 first.")
-    else:
-        hs = st.session_state.cell1_hidden_states
-        st.session_state.cell2_logs.append("[SERVER] Forwarding hidden states to Node 2...")
-        st.session_state.cell2_logs.append(f"[SERVER] Hidden states (8-dim): {hs}")
-
-        err = coordinator.send_to_node(
-            "2",
-            {
-                "type": "cell2_payload",
-                "hidden_states": hs,
-                "source_sentence": st.session_state.cell1_sentence or "",
-                "policy": {
-                    "compute_priority": compute_priority,
-                    "efficiency_priority": efficiency_priority,
-                    "carbon_priority": carbon_priority,
-                },
-            },
-        )
-        if err:
-            st.session_state.cell2_logs.append(f"ERROR - {err}")
-        else:
-            try:
-                result = coordinator.wait_for_cell2_result(timeout=10.0)
-                word = result.get("predicted_word", "?")
-                confidence = result.get("confidence", 0.0)
-                log = result.get("log", "")
-                st.session_state.cell2_logs.append(f"[NODE 2] {log}")
-                st.session_state.cell2_logs.append(
-                    f'[NODE 2] RESULT - Predicted next token: "{word}" (confidence: {confidence:.4f})'
-                )
-                st.session_state.cell2_logs.append(f"[POLICY] {summary_title}")
-                st.session_state.cell2_logs.append(
-                    f'Full forward pass complete: "{st.session_state.cell1_sentence}" -> "{word}"'
-                )
-            except queue.Empty:
-                st.session_state.cell2_logs.append("Timeout waiting for Node 2.")
-            collect_server_logs(coordinator)
 
 cell2_out.markdown(
     f'<div class="output-box">{render_log_lines(st.session_state.cell2_logs)}</div>',
@@ -676,7 +906,7 @@ st.markdown('<hr class="nb-divider">', unsafe_allow_html=True)
 st.markdown(
     """
     <div class="footer-note">
-      SwarmTrain Platform · Pipeline Parallelism Demo · WebSocket Transport · TinyStories Corpus
+      SwarmTrain Platform Â· Pipeline Parallelism Demo Â· WebSocket Transport Â· TinyStories Corpus
     </div>
     """,
     unsafe_allow_html=True,

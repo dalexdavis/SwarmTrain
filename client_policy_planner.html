@@ -286,8 +286,16 @@
       background: #21a366;
     }
 
+    .swatch-cleaner {
+      background: #16a34a;
+    }
+
     .swatch-mixed {
       background: #f9ab00;
+    }
+
+    .swatch-carbon-heavy {
+      background: #ef4444;
     }
 
     .swatch-node {
@@ -344,9 +352,47 @@
       line-height: 1.55;
     }
 
+    .leaflet-container {
+      background:
+        radial-gradient(circle at 20% 18%, rgba(26, 115, 232, 0.12), transparent 18%),
+        linear-gradient(180deg, #eaf5ff 0%, #dff1ff 100%);
+    }
+
+    .leaflet-control-attribution {
+      font-size: 0.68rem;
+    }
+
     .popup-title {
       font-weight: 700;
       margin-bottom: 4px;
+    }
+
+    body.embed-mode .page {
+      max-width: none;
+      padding: 0;
+    }
+
+    body.embed-mode .hero {
+      display: none;
+    }
+
+    body.embed-mode .grid {
+      grid-template-columns: 1fr;
+      margin-top: 0;
+    }
+
+    body.embed-mode .panel:first-child {
+      display: none;
+    }
+
+    body.embed-mode .panel:last-child {
+      border-radius: 20px;
+      box-shadow: none;
+      margin-top: 0;
+    }
+
+    body.embed-mode #map {
+      height: 500px;
     }
 
     @media (max-width: 1100px) {
@@ -377,7 +423,8 @@
         <p>
           This standalone planner helps a client simulate how workload routing changes when they
           prioritize raw compute, energy efficiency, or carbon footprint. The world map uses
-          OpenStreetMap tiles through Leaflet, and the compute nodes shown here are demo locations.
+          OpenStreetMap tiles through Leaflet, and the compute nodes shown here are live node slots
+          scored from their registered profiles.
         </p>
       </div>
       <div class="hero-badge">Open-source map stack</div>
@@ -448,8 +495,8 @@
                 <div class="metric-value" id="gridPosture">Mixed</div>
               </div>
               <div class="metric">
-                <div class="metric-label">Demo chosen node</div>
-                <div class="metric-value" id="chosenNode">Frankfurt GPU</div>
+                <div class="metric-label">Chosen node</div>
+                <div class="metric-value" id="chosenNode">Waiting for nodes</div>
               </div>
             </div>
           </div>
@@ -461,16 +508,18 @@
           <div class="map-header">
             <div>
               <div class="eyebrow">Global placement view</div>
-              <h2 class="section-title">World map with demo compute nodes</h2>
+              <h2 class="section-title">World map with active compute nodes</h2>
               <p>
-                Green circles represent cleaner energy zones. Amber circles represent mixed-grid regions.
-                Blue markers show compute nodes the scheduler can use for this demo. Rankings update live as
-                the client policy changes.
+                The shaded world overlay gives a simplified picture of how clean electricity production is by
+                region. Blue dots show compute nodes across different continents, and the highest-ranked node
+                updates as the policy changes.
               </p>
             </div>
             <div class="legend">
-              <div class="legend-pill"><span class="legend-swatch swatch-clean"></span> Cleaner energy zone</div>
-              <div class="legend-pill"><span class="legend-swatch swatch-mixed"></span> Mixed grid zone</div>
+              <div class="legend-pill"><span class="legend-swatch swatch-cleaner"></span> Very clean production</div>
+              <div class="legend-pill"><span class="legend-swatch swatch-clean"></span> Cleaner mix</div>
+              <div class="legend-pill"><span class="legend-swatch swatch-mixed"></span> Mixed grid</div>
+              <div class="legend-pill"><span class="legend-swatch swatch-carbon-heavy"></span> Carbon-heavy grid</div>
               <div class="legend-pill"><span class="legend-swatch swatch-node"></span> Compute node</div>
             </div>
           </div>
@@ -489,6 +538,18 @@
     crossorigin=""
   ></script>
   <script>
+    const INITIAL_POLICY = {
+      compute: __INITIAL_COMPUTE__,
+      efficiency: __INITIAL_EFFICIENCY__,
+      carbon: __INITIAL_CARBON__,
+    };
+    const EMBED_MODE = __EMBED_MODE__;
+    const nodes = __NODE_DATA__;
+
+    if (EMBED_MODE) {
+      document.body.classList.add("embed-mode");
+    }
+
     const sliders = {
       compute: document.getElementById("computeSlider"),
       efficiency: document.getElementById("efficiencySlider"),
@@ -507,58 +568,9 @@
       nodeList: document.getElementById("nodeList"),
     };
 
-    const nodes = [
-      {
-        id: "node-1",
-        name: "London edge",
-        coords: [51.5072, -0.1276],
-        role: "Attention layer",
-        performance: 72,
-        efficiency: 61,
-        carbon: 58,
-        region: "Mixed-low carbon EU",
-      },
-      {
-        id: "node-2",
-        name: "Frankfurt GPU",
-        coords: [50.1109, 8.6821],
-        role: "LM head",
-        performance: 92,
-        efficiency: 68,
-        carbon: 46,
-        region: "Mixed grid central EU",
-      },
-      {
-        id: "node-3",
-        name: "Reykjavik hydro",
-        coords: [64.1466, -21.9426],
-        role: "Reserve sustainable pool",
-        performance: 66,
-        efficiency: 88,
-        carbon: 97,
-        region: "Very clean hydro grid",
-      },
-      {
-        id: "node-4",
-        name: "Virginia cloud",
-        coords: [39.0438, -77.4874],
-        role: "Burst compute pool",
-        performance: 84,
-        efficiency: 60,
-        carbon: 39,
-        region: "Mixed grid east US",
-      },
-      {
-        id: "node-5",
-        name: "Singapore inference",
-        coords: [1.3521, 103.8198],
-        role: "Latency optimized APAC",
-        performance: 78,
-        efficiency: 65,
-        carbon: 34,
-        region: "Dense urban mixed grid",
-      }
-    ];
+    sliders.compute.value = INITIAL_POLICY.compute;
+    sliders.efficiency.value = INITIAL_POLICY.efficiency;
+    sliders.carbon.value = INITIAL_POLICY.carbon;
 
     const map = L.map("map", {
       zoomControl: true,
@@ -572,38 +584,133 @@
 
     const energyZones = [
       {
-        label: "Nordic hydro-heavy zone",
-        coords: [63.5, 16],
-        radius: 700000,
-        color: "#21a366",
-        fillOpacity: 0.18,
-        note: "High renewable share and low-carbon grid profile.",
+        label: "Iceland and Nordic hydro / wind belt",
+        coords: [64.8, -18],
+        radius: 520000,
+        color: "#16a34a",
+        fillOpacity: 0.26,
+        note: "Very clean electricity production with hydro, geothermal, and wind dominating the mix.",
       },
       {
-        label: "Western Europe cleaner grid corridor",
-        coords: [50.5, 2],
-        radius: 780000,
+        label: "Nordic mainland clean production",
+        coords: [60.5, 16],
+        radius: 950000,
+        color: "#22c55e",
+        fillOpacity: 0.18,
+        note: "Strong hydro and wind output keeps average grid intensity relatively low.",
+      },
+      {
+        label: "Western Europe transition corridor",
+        coords: [50.8, 4],
+        radius: 900000,
         color: "#34a853",
         fillOpacity: 0.14,
-        note: "Moderately strong renewable availability and better average carbon intensity.",
+        note: "Cleaner than global average, with growing renewable and nuclear support.",
       },
       {
-        label: "Central mixed-grid corridor",
-        coords: [49, 12],
-        radius: 650000,
-        color: "#f9ab00",
+        label: "Quebec and Eastern Canada hydro zone",
+        coords: [50, -71],
+        radius: 1050000,
+        color: "#16a34a",
         fillOpacity: 0.16,
-        note: "Balanced infrastructure but less favorable carbon profile.",
+        note: "Large hydroelectric share supports low-carbon power availability.",
       },
       {
-        label: "East US mixed grid region",
-        coords: [38.5, -78],
-        radius: 850000,
+        label: "US East mixed generation belt",
+        coords: [37.8, -78],
+        radius: 1050000,
+        color: "#f9ab00",
+        fillOpacity: 0.14,
+        note: "Good compute availability, but grid cleanliness varies by state and demand profile.",
+      },
+      {
+        label: "Brazil hydro-backed production zone",
+        coords: [-15, -52],
+        radius: 1600000,
+        color: "#22c55e",
+        fillOpacity: 0.13,
+        note: "Hydropower keeps much of the region cleaner despite seasonal volatility.",
+      },
+      {
+        label: "North Africa and Middle East solar corridor",
+        coords: [25, 25],
+        radius: 1500000,
+        color: "#84cc16",
+        fillOpacity: 0.1,
+        note: "Fast-growing solar buildout creates pockets of cleaner daytime generation.",
+      },
+      {
+        label: "India coal-heavy grid",
+        coords: [21, 79],
+        radius: 1400000,
+        color: "#ef4444",
+        fillOpacity: 0.14,
+        note: "Electricity production is still relatively carbon-intensive in many regions.",
+      },
+      {
+        label: "Southeast Asia mixed grid corridor",
+        coords: [7, 105],
+        radius: 1450000,
         color: "#fbbc04",
         fillOpacity: 0.14,
-        note: "Good compute availability with mixed grid carbon characteristics.",
+        note: "Fast-growing demand and mixed fuel sources produce a blended carbon profile.",
+      },
+      {
+        label: "East Africa geothermal and renewable pocket",
+        coords: [-1, 37],
+        radius: 720000,
+        color: "#22c55e",
+        fillOpacity: 0.14,
+        note: "Regional renewable growth, including geothermal, improves grid cleanliness.",
+      },
+      {
+        label: "Australia coastal renewable corridor",
+        coords: [-33, 149],
+        radius: 1300000,
+        color: "#34a853",
+        fillOpacity: 0.12,
+        note: "Wind and solar are rising quickly, improving average electricity cleanliness.",
+      },
+      {
+        label: "East Asia industrial mixed grid",
+        coords: [36, 127],
+        radius: 1500000,
+        color: "#f59e0b",
+        fillOpacity: 0.13,
+        note: "Major industrial demand creates a broad mixed generation profile.",
       }
     ];
+
+    const gridBands = [
+      {
+        label: "Cleaner production belt",
+        bounds: [[42, -82], [70, 35]],
+        color: "#22c55e",
+        fillOpacity: 0.07,
+      },
+      {
+        label: "Mixed Atlantic compute corridor",
+        bounds: [[24, -90], [55, -58]],
+        color: "#f59e0b",
+        fillOpacity: 0.06,
+      },
+      {
+        label: "South and East Asia carbon pressure belt",
+        bounds: [[-5, 68], [38, 122]],
+        color: "#ef4444",
+        fillOpacity: 0.05,
+      },
+    ];
+
+    gridBands.forEach((band) => {
+      L.rectangle(band.bounds, {
+        stroke: false,
+        fillColor: band.color,
+        fillOpacity: band.fillOpacity,
+      })
+      .bindPopup(`<div class="popup-title">${band.label}</div>`)
+      .addTo(map);
+    });
 
     energyZones.forEach((zone) => {
       L.circle(zone.coords, {
@@ -619,9 +726,9 @@
 
     const nodeMarkers = nodes.map((node) => {
       const marker = L.circleMarker(node.coords, {
-        radius: 8,
+        radius: 5,
         color: "#ffffff",
-        weight: 2,
+        weight: 1.5,
         fillColor: "#1a73e8",
         fillOpacity: 1,
       }).addTo(map);
@@ -631,11 +738,13 @@
     });
 
     function renderPopup(node, score) {
+      const carbonPreference = 100 - node.carbon;
       return `
         <div class="popup-title">${node.name}</div>
         <div>${node.role}</div>
         <div>Region: ${node.region}</div>
-        <div>Performance: ${node.performance} / Efficiency: ${node.efficiency} / Carbon: ${node.carbon}</div>
+        <div>Node ${node.nodeId} · Performance: ${node.performance} / Efficiency: ${node.efficiency} / Carbon footprint: ${node.carbon}</div>
+        <div>Cleaner-carbon score: ${carbonPreference}</div>
         <div><strong>Policy score: ${score.toFixed(1)}</strong></div>
       `;
     }
@@ -671,15 +780,26 @@
       return (
         node.performance * (compute / 100) +
         node.efficiency * (efficiency / 100) +
-        node.carbon * (carbon / 100)
+        (100 - node.carbon) * (carbon / 100)
       );
     }
 
     function renderNodes(sortedNodes) {
+      if (!sortedNodes.length) {
+        outputs.nodeList.innerHTML = `
+          <div class="node-card">
+            <h4>No active nodes</h4>
+            <div class="node-meta">Start one or more nodes and register different compute, clean-energy, and carbon values to see live ranking here.</div>
+          </div>
+        `;
+        return;
+      }
+
       outputs.nodeList.innerHTML = sortedNodes.map(({ node, score }, index) => `
         <div class="node-card">
           <h4>${index + 1}. ${node.name}</h4>
           <div class="node-meta">
+            Node ${node.nodeId}<br>
             ${node.role}<br>
             ${node.region}<br>
             Performance ${node.performance} · Efficiency ${node.efficiency} · Carbon ${node.carbon}
@@ -708,17 +828,17 @@
         .map((node) => ({ node, score: scoreNode(node, compute, efficiency, carbon) }))
         .sort((a, b) => b.score - a.score);
 
-      outputs.chosenNode.textContent = ranked[0].node.name;
+      outputs.chosenNode.textContent = ranked.length ? ranked[0].node.name : "Waiting for nodes";
       renderNodes(ranked);
 
       nodeMarkers.forEach(({ node, marker }) => {
         const scoredNode = ranked.find((item) => item.node.id === node.id);
-        const isWinner = scoredNode.node.id === ranked[0].node.id;
+        const isWinner = ranked.length && scoredNode && scoredNode.node.id === ranked[0].node.id;
         marker.setStyle({
           fillColor: isWinner ? "#0b8043" : "#1a73e8",
-          radius: isWinner ? 10 : 8,
+          radius: isWinner ? 8 : 5,
         });
-        marker.bindPopup(renderPopup(node, scoredNode.score));
+        marker.bindPopup(renderPopup(node, scoredNode ? scoredNode.score : 0));
       });
     }
 

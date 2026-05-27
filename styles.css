@@ -65,7 +65,7 @@ section[data-testid="stSidebar"][aria-expanded="false"] {
     margin-left: 0 !important;
 }
 
-section[data-testid="stSidebar"] > div {
+section[data-testid="stSidebar"]>div {
     width: 300px !important;
     min-width: 300px !important;
     background: #ffffff;
@@ -130,6 +130,22 @@ section[data-testid="stSidebar"] > div {
     border-bottom: 1px solid #edf1f7;
     font-size: 0.82rem;
     color: var(--text);
+}
+
+.node-badge-card {
+    padding: 0.2rem 0 0.45rem;
+    border-bottom: 1px solid #edf1f7;
+}
+
+.node-badge-card:last-of-type {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.node-profile-line {
+    color: var(--text-soft);
+    font-size: 0.72rem;
+    padding-top: 0.05rem;
 }
 
 .node-badge-last {
@@ -354,6 +370,35 @@ section[data-testid="stSidebar"] > div {
     color: var(--text-soft);
     font-size: 0.82rem;
     line-height: 1.6;
+}
+
+.policy-metric-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+    margin-top: 0.9rem;
+}
+
+.policy-metric-card {
+    padding: 0.8rem 0.9rem;
+    border-radius: 12px;
+    border: 1px solid #d7e5ff;
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.policy-metric-label {
+    color: var(--text-soft);
+    font-size: 0.72rem;
+    margin-bottom: 0.2rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.policy-metric-value {
+    color: var(--text);
+    font-size: 0.84rem;
+    font-weight: 700;
+    line-height: 1.45;
 }
 
 .demo-map {
@@ -609,7 +654,7 @@ pre,
     font-family: 'Roboto Mono', monospace !important;
 }
 
-.stButton > button {
+.stButton>button {
     border-radius: 12px;
     border: 1px solid var(--border-strong);
     background: #ffffff;
@@ -618,10 +663,26 @@ pre,
     box-shadow: 0 1px 2px rgba(60, 64, 67, 0.08);
 }
 
-.stButton > button[kind="primary"] {
+.stButton>button[kind="primary"] {
     background: var(--blue);
     border-color: var(--blue);
     color: #ffffff;
+}
+
+div[data-testid="stSlider"] label,
+div[data-testid="stSlider"] .stMarkdown,
+div[data-testid="stSlider"] p,
+div[data-testid="stSlider"] span,
+div[data-testid="stSlider"] [data-testid="stTickBar"] {
+    color: var(--text) !important;
+}
+
+div[data-testid="stSlider"] [data-baseweb="slider"] {
+    padding-top: 0.2rem;
+}
+
+div[data-testid="stSlider"] [role="slider"] {
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 7px rgba(26, 115, 232, 0.18) !important;
 }
 
 .stAlert {
@@ -695,7 +756,7 @@ pre,
         max-width: 280px !important;
     }
 
-    section[data-testid="stSidebar"] > div {
+    section[data-testid="stSidebar"]>div {
         width: 280px !important;
         min-width: 280px !important;
     }
