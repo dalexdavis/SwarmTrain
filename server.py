@@ -1,4 +1,4 @@
-"""
+﻿"""
 SwarmTrain Dashboard Engine - server.py
 =======================================
 A Streamlit-based UI that mimics a notebook workspace and coordinates a
@@ -509,13 +509,13 @@ with st.sidebar:
         node_data = connected_nodes_snapshot.get(node_id)
         online = node_data is not None
         badge_cls = "badge-on" if online else "badge-off"
-        icon = "â—" if online else "â—‹"
+        icon = "[*]" if online else "[*]‹"
         profile_line = ""
         if online:
             profile = node_data["profile"]
             profile_line = (
-                f'<div class="node-profile-line">cap {profile["compute_capacity"]} Â· '
-                f'clean {profile["clean_energy_level"]} Â· carbon {profile["carbon_footprint"]}</div>'
+                f'<div class="node-profile-line">cap {profile["compute_capacity"]} - '
+                f'clean {profile["clean_energy_level"]} - carbon {profile["carbon_footprint"]}</div>'
             )
         st.markdown(
             f"""
@@ -573,7 +573,7 @@ st.markdown(
       <div class="swarm-logo">ST</div>
       <div>
         <h1>SwarmTrain Platform</h1>
-        <div class="subtitle">Decentralised Pipeline-Parallel Training Â· Notebook Workspace Â· v0.1-alpha</div>
+        <div class="subtitle">Decentralised Pipeline-Parallel Training - Notebook Workspace - v0.1-alpha</div>
       </div>
       <div class="header-status">
         <div class="status-pill"><div class="status-dot"></div>Coordinator online</div>
@@ -906,8 +906,9 @@ st.markdown('<hr class="nb-divider">', unsafe_allow_html=True)
 st.markdown(
     """
     <div class="footer-note">
-      SwarmTrain Platform Â· Pipeline Parallelism Demo Â· WebSocket Transport Â· TinyStories Corpus
+      SwarmTrain Platform - Pipeline Parallelism Demo - WebSocket Transport - TinyStories Corpus
     </div>
     """,
     unsafe_allow_html=True,
 )
+

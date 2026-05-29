@@ -65,24 +65,24 @@ NODE_PROFILES = {
 
 def banner(node_id: str, profile: dict) -> None:
     colour = GREEN if node_id in {"1", "3"} else BLUE
-    bar = "â”€" * 58
+    bar = "-" * 58
     print(f"\n{colour}{BOLD}")
-    print(f"  â”Œ{bar}â”")
-    print(f"  â”‚   SwarmTrain Â· Node {node_id:<2} Â· Generic Compute Worker          â”‚")
-    print(f"  â”‚   Connected to {SERVER_URI:<40}â”‚")
+    print(f"  +{bar}+")
+    print(f"  |   SwarmTrain - Node {node_id:<2} - Generic Compute Worker          |")
+    print(f"  |   Connected to {SERVER_URI:<40}|")
     print(
-        "  â”‚   Capacity {compute_capacity:>3} Â· Clean {clean_energy_level:>3} Â· Carbon {carbon_footprint:>3}        â”‚".format(
+        "  |   Capacity {compute_capacity:>3} - Clean {clean_energy_level:>3} - Carbon {carbon_footprint:>3}        |".format(
             **profile
         )
     )
-    print(f"  â””{bar}â”˜{RESET}\n")
+    print(f"  +{bar}+{RESET}\n")
 
 
 def log(node_id: str, msg: str, level: str = "info") -> None:
     ts = time.strftime("%H:%M:%S")
     colour = GREEN if node_id in {"1", "3"} else BLUE
-    icons = {"info": "Â·", "recv": "â†“", "send": "â†‘", "ok": "âœ“", "err": "âœ—"}
-    icon = icons.get(level, "Â·")
+    icons = {"info": "[.]", "recv": "[v]", "send": "[^]", "ok": "[OK]", "err": "[X]"}
+    icon = icons.get(level, "[.]")
     print(f"  {DIM}{ts}{RESET}  {colour}{BOLD}[SwarmTrain - NODE {node_id}]{RESET}  {icon}  {msg}")
 
 
@@ -179,10 +179,10 @@ async def worker_handler(websocket, node_id: str, profile: dict) -> None:
 
 async def main() -> None:
     print(f"\n  {CYAN}{BOLD}SwarmTrain Node Registration{RESET}")
-    print(f"  {DIM}{'â”€' * 40}{RESET}")
+    print(f"  {DIM}{'-' * 40}{RESET}")
 
     while True:
-        node_id = input("\n  Register as SwarmTrain Node 1, 2, 3, or 4?  â€º ").strip()
+        node_id = input("\n  Register as SwarmTrain Node 1, 2, 3, or 4?  > ").strip()
         if node_id in {"1", "2", "3", "4"}:
             break
         print(f"  {RED}Please enter 1, 2, 3, or 4.{RESET}")
@@ -191,8 +191,8 @@ async def main() -> None:
     print(f"\n  {YELLOW}Loaded built-in demo profile for Node {node_id}{RESET}")
     print(
         "  "
-        f"Capacity {profile['compute_capacity']} Â· "
-        f"Clean {profile['clean_energy_level']} Â· "
+        f"Capacity {profile['compute_capacity']} - "
+        f"Clean {profile['clean_energy_level']} - "
         f"Carbon {profile['carbon_footprint']}"
     )
 
@@ -213,7 +213,7 @@ async def main() -> None:
             await worker_handler(websocket, node_id, profile)
 
     except ConnectionRefusedError:
-        print(f"\n  {RED}{BOLD}âœ—  Could not connect to {SERVER_URI}{RESET}")
+        print(f"\n  {RED}{BOLD}[X]  Could not connect to {SERVER_URI}{RESET}")
         print(f"  {DIM}Make sure server.py is running: streamlit run server.py{RESET}\n")
         sys.exit(1)
     except websockets.exceptions.ConnectionClosedOK:
